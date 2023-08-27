@@ -1,26 +1,74 @@
+import re
+from typing import Self
+
 import allure_commons
 import pytest
 import allure
+from selene import Collection, Element, browser
+from selene.core.entity import Browser, WaitingEntity
+from selene.core.locator import Locator
 
 import web_test
 from selene.support.shared import browser
 from selene import support
 from web_test import assist
+from web_test.assist.allure import report
+from web_test.assist.python import monkey
+from web_test.assist.selene.report import wait_with
 
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def add_reporting_to_selene_steps():
+    original_open = Browser.open
 
-    from web_test.assist.python import monkey
-    from selene.support.shared import SharedConfig, SharedBrowser
-
-    original_open = SharedBrowser.open
-
-    @monkey.patch_method_in(SharedBrowser)
+    @monkey.patch_method_in(Browser)
     def open(self, relative_or_absolute_url: str):
-        from web_test.assist.allure import report
-
         return report.step(original_open)(self, relative_or_absolute_url)
+
+    # we need the last part of the locator for use as a name in case a description wasn't provided
+    @monkey.patch_method_in(Locator)
+    def last_locator(self):
+        result = re.search(r"""(element|all)\(\('[^()]*', '[^']*'\)\)$""", self._description)
+        return result.group()
+
+    WaitingEntity.description = ""
+    WaitingEntity.previous_name_chain_element = None
+    WaitingEntity.full_description = ""
+
+    @monkey.patch_method_in(WaitingEntity)
+    def as_(self, name: str):
+        self.description = name
+        return self
+
+    @property
+    def full_description(self):
+        if self.description:
+            result = self.get_full_path()
+        else:
+            result = str(self._locator)
+        return result
+
+    Collection.full_description = full_description
+    Element.full_description = full_description
+
+    @monkey.patch_method_in(WaitingEntity)
+    def get_full_path(self) -> str:
+        result = ".".join(self.resolve_name())
+        return result
+
+    @monkey.patch_method_in(WaitingEntity)
+    def resolve_name(self) -> list:
+        if self.previous_name_chain_element:
+            name = self.previous_name_chain_element.resolve_name()
+        else:
+            name = []
+        name.append(str(self.description or str(self.last_locator())))
+        return name
+
+    @monkey.patch_method_in(WaitingEntity)
+    def set_previous_name_chain_element(self, previous_element):
+        self.previous_name_chain_element = previous_element
+        return self
 
 
 import config
@@ -41,7 +89,7 @@ def browser_management():
     browser.config.save_page_source_on_failure = (
         config.settings.save_page_source_on_failure
     )
-    browser.config._wait_decorator = support._logging.wait_with(
+    browser.config._wait_decorator = wait_with(
         context=allure_commons._allure.StepContext
     )
 
@@ -122,11 +170,6 @@ def _driver_options_from(settings: config.Settings) -> WebDriverOptions:
 
     if settings.browser_name == supported.edge:
         options = EdgeOptions()
-
-    from web_test.assist.selenium.typing import OperaOptions
-
-    if settings.browser_name == supported.edge:
-        options = OperaOptions()
 
     if settings.remote_url:
         options.set_capability(

@@ -1,3 +1,4 @@
+import os
 from typing import Literal, Optional
 
 from web_test import assist
@@ -84,6 +85,7 @@ class Settings(pydantic.BaseSettings):
     hold_browser_open: bool = False
     save_page_source_on_failure: bool = True
     author: str = 'yashaka'
+    chromedriver_path: Optional[str] = None
 
     @classmethod
     def in_context(cls, env: Optional[EnvContext] = None) -> 'Settings':
@@ -91,9 +93,7 @@ class Settings(pydantic.BaseSettings):
         factory method to init Settings with values from corresponding .env file
         """
         asked_or_current = env or cls().context
-        return cls(_env_file=assist.project.abs_path_from_project(
-            f'config.{asked_or_current}.env'
-        ))
+        return cls(_env_file=os.path.dirname(os.path.abspath(__file__)) + f'/config.{asked_or_current}.env')
 
 
 settings = Settings.in_context()

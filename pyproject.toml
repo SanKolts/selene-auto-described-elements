@@ -6,7 +6,7 @@ authors = ["Iakiv Kramarenko <yashaka@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-selene = {version = "^2.0.0-beta.2", allow-prereleases = true}
+selene = "2.0.0rc3post1"
 python-dotenv = "^0.15.0"
 pydantic = "^1.8.1"
 pytest = "^7.1.3"
